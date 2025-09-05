@@ -1,9 +1,10 @@
 package services
 
 import (
-	"clase02-mongo/internal/domain"
+	"clase03-memcached/internal/domain"
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 )
 
@@ -28,13 +29,15 @@ type ItemsRepository interface {
 
 type ItemsServiceImpl struct {
 	repository ItemsRepository // Inyección de dependencia
+	cache      ItemsRepository // Inyección de dependencia
 }
 
 // NewItemsService crea una nueva instancia del service
 // Pattern: Dependency Injection - recibe dependencies como parámetros
-func NewItemsService(repository ItemsRepository) ItemsServiceImpl {
+func NewItemsService(repository ItemsRepository, cache ItemsRepository) ItemsServiceImpl {
 	return ItemsServiceImpl{
 		repository: repository,
+		cache:      cache,
 	}
 }
 
@@ -49,45 +52,57 @@ func (s *ItemsServiceImpl) List(ctx context.Context) ([]domain.Item, error) {
 // Create valida y crea un nuevo item
 // Consigna 1: Validar name no vacío y price >= 0
 func (s *ItemsServiceImpl) Create(ctx context.Context, item domain.Item) (domain.Item, error) {
-	if item.Name == "" {
-		return domain.Item{}, errors.New("name cannot be empty")
+	created, err := s.repository.Create(ctx, item)
+	if err != nil {
+		return domain.Item{}, fmt.Errorf("error creating item in repository: %w", err)
 	}
-	if item.Price < 0 {
-		return domain.Item{}, errors.New("price must be >= 0")
+
+	_, err = s.cache.Create(ctx, created)
+	if err != nil {
+		return domain.Item{}, fmt.Errorf("error creating item in cache: %w", err)
 	}
-	// Delegar la creación al repository
-	return s.repository.Create(ctx, item)
+
+	return created, nil
 }
 
 // GetByID obtiene un item por su ID
 // Consigna 2: Validar formato de ID antes de consultar DB
 func (s *ItemsServiceImpl) GetByID(ctx context.Context, id string) (domain.Item, error) {
-	if strings.TrimSpace(id) == "" {
-		return domain.Item{}, errors.New("id cannot be empty")
+	item, err := s.cache.GetByID(ctx, id)
+	if err != nil {
+		item, err := s.repository.GetByID(ctx, id)
+		if err != nil {
+			return domain.Item{}, fmt.Errorf("error getting item from repository: %w", err)
+		}
+
+		_, err = s.cache.Create(ctx, item)
+		if err != nil {
+			return domain.Item{}, fmt.Errorf("error creating item in cache: %w", err)
+		}
+
+		return item, nil
 	}
-	return s.repository.GetByID(ctx, id)
+	return item, nil
 }
 
 // Update actualiza un item existente
 // Consigna 3: Validar campos antes de actualizar
 func (s *ItemsServiceImpl) Update(ctx context.Context, id string, item domain.Item) (domain.Item, error) {
-	if strings.TrimSpace(id) == "" {
-		return domain.Item{}, errors.New("id cannot be empty")
-	}
-	if err := s.validateItem(item); err != nil {
-		return domain.Item{}, err
-	}
 
-	return s.repository.Update(ctx, id, item)
+	// TODO: Actualizar en DB
+	// TODO: Guardar en cache
+
+	return domain.Item{}, errors.New("TODO: implementar Update")
 }
 
 // Delete elimina un item por ID
 // Consigna 4: Validar ID antes de eliminar
 func (s *ItemsServiceImpl) Delete(ctx context.Context, id string) error {
-	if strings.TrimSpace(id) == "" {
-		return errors.New("id cannot be empty")
-	}
-	return s.repository.Delete(ctx, id)
+
+	// TODO: Borrar de cache
+	// TODO: Borrar de DB
+
+	return errors.New("TODO: implementar Delete")
 }
 
 // validateItem aplica reglas de negocio para validar un item
