@@ -14,9 +14,6 @@
 *.exe
 *.test
 *.out
-main
-api
-app
 /bin/
 /dist/
 
